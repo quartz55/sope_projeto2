@@ -1,7 +1,10 @@
-CFLAGS= -Wall -g -O3
+CFLAGS= -Wall -g -D_REENTRANT -lpthread -lrt -O3
 OUTDIR= ./bin/
 
-all: main
+all: balcao cliente
 
-sw: main.c
-	gcc $(CFLAGS) -o $(OUTDIR)main main.c
+balcao: balcao.c
+	gcc $(CFLAGS) -o $(OUTDIR)balcao balcao.c
+
+cliente: main.c
+	gcc $(CFLAGS) -o $(OUTDIR)cliente cliente.c
