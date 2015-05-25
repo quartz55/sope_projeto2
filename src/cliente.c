@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
@@ -16,10 +17,13 @@ void destroyFIFO(char *name);
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2) {
-        printf("Usage: cli_03 <b_fifo>\n");
+    if (argc != 3) {
+        printf("Usage: %s <counter_fifo> <shm>\n", argv[0]);
         exit(1);
     }
+
+    char SHM_NAME[80];
+    strcpy(SHM_NAME, argv[2]);
 
     /* Generate FIFO name for client */
     pid_t pid;
@@ -38,8 +42,6 @@ int main(int argc, char *argv[])
             printf("\t#ERROR# Can't create client FIFO\n");
     else
     {
-        if(DEBUG) printf("\t#FIFO# Client '%s' sucessfully created\n", FIFO_name);
-
         printf("+----------------------------------\n");
         printf("| Created cliente: %s\n", FIFO_name);
         printf("+----------------------------------\n");
@@ -47,37 +49,29 @@ int main(int argc, char *argv[])
     /* ---------------------------- */
 
 
-    printf(". Looking for available counter...\n");
-
     char *B_FIFO = argv[1];
-    printf("Found '%s' counter\n", B_FIFO);
+
 
     /* Write to counter FIFO the client's private FIFO */
     int fd;
     fd = open(B_FIFO, O_WRONLY);
-    if (fd != -1) {
-        if(DEBUG)
-            printf("\t#FIFO# Client '%s' openned in WRITEONLY mode\n", B_FIFO);
-    }
-    else{
+    if (fd < 0){
         printf("\t#ERROR# Couldn't open counter FIFO '%s'\n", B_FIFO);
         destroyFIFO(FIFO_name);
         exit(1);
     }
 
-    myLog("teste", 1, 1, "pede_atendimento", FIFO_name);
+    printf("Client '%s' is contacting '%s' counter\n", FIFO_name, B_FIFO);
+    logLine(SHM_NAME, 1, 1, "pede_atendimento", FIFO_name);
     /* Write to counter FIFO the client fifo name */
     write(fd, FIFO_name, strlen(FIFO_name) + 1);
 
     close(fd);
 
+    printf("Client '%s' is waiting for '%s' counter to begin serving\n", FIFO_name, B_FIFO);
     int cli_fd;
-    if ((cli_fd = open(FIFO_name, O_RDONLY)) != -1)
-    {
-        if(DEBUG) printf("\t#FIFO# Client '%s' openned in READONLY mode\n", FIFO_name);
-    }
-    else
-    {
+    cli_fd = open(FIFO_name, O_RDONLY);
+    if (cli_fd < 0) {
         printf("\t#ERROR# Couldn't open client FIFO '%s'\n", FIFO_name);
         destroyFIFO(FIFO_name);
         exit(1);
@@ -88,10 +82,9 @@ int main(int argc, char *argv[])
     while ((read(cli_fd, &fim_atendimento, 256*sizeof(char))) == 0);
     if(strcmp("fim_atendimento", fim_atendimento) == 0){
         printf("%s is finished (%s)\n", FIFO_name, fim_atendimento);
-        myLog("teste", 1, 1, "fim_atendimento", FIFO_name);
+        logLine(SHM_NAME, 1, 1, "fim_atendimento", FIFO_name);
     }
-    else
-    {
+    else {
         printf("#ERROR# Client '%s' didn't finish being served\n", FIFO_name);
     }
 
