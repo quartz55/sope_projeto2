@@ -88,9 +88,7 @@ int main(int argc, char *argv[])
 
     /* Wait for counter to finish */
     char fim_atendimento[256];
-    while ((read(cli_fd, &fim_atendimento, 256*sizeof(char))) == 0) {
-        printf("%s\n", FIFO_name);
-    }
+    read(cli_fd, &fim_atendimento, 256*sizeof(char));
     if(strcmp("fim_atendimento", fim_atendimento) == 0){
         printf("- %s is finished (%s)\n", FIFO_name, fim_atendimento);
         logLine(SHM_NAME, 1, counterNumber, "fim_atendimento", FIFO_name);

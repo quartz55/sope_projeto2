@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include "vector.h"
 
+#define SHM_SIZE (1<<20)
+
 typedef struct counter_t
 {
     int i;

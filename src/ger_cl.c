@@ -10,13 +10,11 @@
 #include "memstruct.h"
 #include "vector.h"
 
-#define SHM_SIZE 4096
 char SHM_NAME[80];
 
 int main(int argc, char *argv[])
 {
-    if(argc != 3)
-    {
+    if(argc != 3) {
         printf("Usage: %s <nome_mempartilhada> <num_clientes>\n", argv[0]);
         exit(3);
     }
@@ -27,40 +25,38 @@ int main(int argc, char *argv[])
     char shm_dir[80] = "/";
     strcat(shm_dir, SHM_NAME);
 
-    int shm_fd = shm_open(shm_dir, O_RDWR, 0600);
+    /*
+     * Shared memory
+     *   NOTE: Opened in readonly because ger_cl will only read the counters
+     *         table from the shared memory and not modify anything
+     */
+    int shm_fd = shm_open(shm_dir, O_RDONLY, 0600);
     if (shm_fd < 0) {
         printf("#ERROR# Couldn't open shared memory\n");
         exit(2);
     }
 
     memstruct_t *shm;
-    shm = (memstruct_t *)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    shm = (memstruct_t *)mmap(0, SHM_SIZE, PROT_READ, MAP_SHARED, shm_fd, 0);
     if (shm == MAP_FAILED) {
         printf("#ERROR# Couldn't map shared memory\n");
         exit(2);
     }
+    /* ------end shared memory-------- */
 
-    pthread_mutex_lock(&shm->mutx);
-
+    /* Early out if there are no counters */
     if(shm->numCounters < 1) {
     NO_COUNTERS:
         printf("#ERROR# No counters available\n");
-        pthread_mutex_unlock(&shm->mutx);
         goto EXIT;
     }
 
     memstruct_print(shm);
 
-    pthread_mutex_unlock(&shm->mutx);
-
     int clientsCreated = 0;
 
     for(; num_clients>0; num_clients--, ++clientsCreated) {
 
-        printf("Clients left: %d\n", num_clients);
-        printf("Clients created: %d\n", clientsCreated);
-
-        pthread_mutex_lock(&shm->mutx);
 
         int i, min, index;
         min = 9999999;
@@ -81,8 +77,6 @@ int main(int argc, char *argv[])
         char counter_fifo[80];
         strcpy(counter_fifo, shm->counters[index].fifo_name);
 
-        pthread_mutex_unlock(&shm->mutx);
-
         if(fork() == 0) {
             char counterNumber[5];
             sprintf(counterNumber, "%d", index+1);
@@ -98,6 +92,9 @@ int main(int argc, char *argv[])
                    SHM_NAME);
             exit(1);
         }
+
+        printf("Clients left: %d\n", num_clients);
+        printf("Clients created: %d\n", clientsCreated);
     }
 
     wait(NULL);

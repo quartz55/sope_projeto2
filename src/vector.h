@@ -70,10 +70,18 @@ inline void Vector_push(Vector_t *vec, void *element)
     if(vec->size >= vec->capacity){
         vec->capacity *= 2;
         void** newData = (void **)realloc(vec->data, vec->capacity*sizeof(*vec->data));
+        if(!newData){
+            printf("Realloc failed for '%d' bytes\n", vec->capacity);
+            perror("Realloc failed: ");
+        }
         vec->data = newData;
     }
 
     vec->data[vec->size++] = element;
+    // printf("Vec size: %d  |  Vec capacity: %d  | Null check: %s\n",
+    //        vec->size,
+    //        vec->capacity,
+    //        (vec->data == NULL) ? "NULL" : "-");
 }
 
 inline void* Vector_get(Vector_t *vec, int i)
@@ -84,6 +92,7 @@ inline void* Vector_get(Vector_t *vec, int i)
         printf("#ERROR# Index out of bounds: %d\n", i);
         abort();
     }
+    assert(vec->data[i] != NULL);
 
     return vec->data[i];
 }
