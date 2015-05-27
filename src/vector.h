@@ -17,28 +17,29 @@ typedef struct Vector_t
     int size;
     int capacity;
     void **data;
-}Vector_t;
+} Vector_t;
 
-Vector_t* Vector_new();
+Vector_t *Vector_new();
 void Vector_destroy(Vector_t *vec);
 
 int Vector_size(Vector_t *vec);
 void Vector_push(Vector_t *vec, void *element);
-void* Vector_get(Vector_t *vec, int i);
-void* Vector_last(Vector_t *vec);
+void *Vector_get(Vector_t *vec, int i);
+void *Vector_last(Vector_t *vec);
 
-inline Vector_t* Vector_new()
+inline Vector_t *Vector_new()
 {
-    Vector_t* vec = (Vector_t *)malloc(sizeof(Vector_t));
+    Vector_t *vec = (Vector_t *)malloc(sizeof(Vector_t));
 
-    if(!vec) return NULL;
+    if (!vec)
+        return NULL;
 
     vec->size = 0;
     vec->capacity = VECTOR_DEFAULT_CAPACITY;
-    vec->data = (void **)malloc(vec->capacity*sizeof(void *));
+    vec->data = (void **)malloc(vec->capacity * sizeof(void *));
 
-    if(!vec->data)
-        if(vec){
+    if (!vec->data)
+        if (vec) {
             free(vec);
             return NULL;
         }
@@ -49,7 +50,7 @@ inline Vector_t* Vector_new()
 inline void Vector_destroy(Vector_t *vec)
 {
     int i;
-    for(i = 0; i < vec->size; i++)
+    for (i = 0; i < vec->size; i++)
         free(vec->data[i]);
     free(vec->data);
     free(vec);
@@ -67,10 +68,11 @@ inline void Vector_push(Vector_t *vec, void *element)
     assert(vec != NULL);
     assert(vec->data != NULL);
 
-    if(vec->size >= vec->capacity){
+    if (vec->size >= vec->capacity) {
         vec->capacity *= 2;
-        void** newData = (void **)realloc(vec->data, vec->capacity*sizeof(*vec->data));
-        if(!newData){
+        void **newData =
+            (void **)realloc(vec->data, vec->capacity * sizeof(*vec->data));
+        if (!newData) {
             printf("Realloc failed for '%d' bytes\n", vec->capacity);
             perror("Realloc failed: ");
         }
@@ -84,11 +86,11 @@ inline void Vector_push(Vector_t *vec, void *element)
     //        (vec->data == NULL) ? "NULL" : "-");
 }
 
-inline void* Vector_get(Vector_t *vec, int i)
+inline void *Vector_get(Vector_t *vec, int i)
 {
     assert(vec != NULL);
     assert(vec->data != NULL);
-    if(i >= vec->size || i < 0){
+    if (i >= vec->size || i < 0) {
         printf("#ERROR# Index out of bounds: %d\n", i);
         abort();
     }
@@ -96,11 +98,11 @@ inline void* Vector_get(Vector_t *vec, int i)
 
     return vec->data[i];
 }
-inline void* Vector_last(Vector_t *vec)
+inline void *Vector_last(Vector_t *vec)
 {
     assert(vec != NULL);
     assert(vec->data != NULL);
 
-    return vec->data[vec->size-1];
+    return vec->data[vec->size - 1];
 }
 #endif /* VECTOR_H */

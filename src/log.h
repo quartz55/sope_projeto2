@@ -16,9 +16,10 @@ void clearLog(char *logname)
     FILE *file;
     file = fopen(filename, "w");
 
-    fprintf(file, "%-25s | %-7s | %-6s | %-25s | %-18s \n", "quando", "quem", "balcao", "o_que", "canal_criado/usado");
+    fprintf(file, "%-25s | %-7s | %-6s | %-25s | %-18s \n", "quando", "quem",
+            "balcao", "o_que", "canal_criado/usado");
     int i;
-    for(i=0; i < 93; i++)
+    for (i = 0; i < 93; i++)
         fprintf(file, "-");
     fprintf(file, "\n");
 
@@ -44,13 +45,15 @@ void logLine(char *logname, int who, int counter, char *what, char *fifo_name)
     strcpy(time, ctime(&now));
     strtok(time, "\n");
 
-    if(now != -1)
-    {
+    if (now != -1) {
         char quem[8];
-        if(who) strcpy(quem, "Cliente");
-        else strcpy(quem, "Balcao");
+        if (who)
+            strcpy(quem, "Cliente");
+        else
+            strcpy(quem, "Balcao");
 
-        fprintf(file, "%-25s | %-7s | %-6d | %-25s | %-18s \n", time, quem, counter, what, fifo_name);
+        fprintf(file, "%-25s | %-7s | %-6d | %-25s | %-18s \n", time, quem,
+                counter, what, fifo_name);
     }
 
     fclose(file);

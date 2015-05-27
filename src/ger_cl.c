@@ -13,40 +13,38 @@
 #include "memstruct.h"
 #include "vector.h"
 
-char SHM_NAME[80];
-
 int main(int argc, char *argv[])
 {
-    if(argc != 3) {
+    if (argc != 3) {
         printf("Usage: %s <nome_mempartilhada> <num_clientes>\n", argv[0]);
         exit(3);
     }
 
-    int num_clients = atoi(argv[2]);
-
     // Get path to 'client'
-    char client_path[256];
-    realpath(argv[0], client_path);
-    dirname(client_path);
-    strcat(client_path, "/cliente");
-    /* printf("%s\n", client_path); */
-    /* -- */
+    char CLIENT_PATH[256];
+    realpath(argv[0], CLIENT_PATH);
+    dirname(CLIENT_PATH);
+    strcat(CLIENT_PATH, "/cliente");
 
+    char SHM_NAME[80];
     strcpy(SHM_NAME, argv[1]);
-    char shm_dir[80] = "/";
-    strcat(shm_dir, SHM_NAME);
+    char SHM_DIR[80] = "/";
+    strcat(SHM_DIR, SHM_NAME);
 
-    sem_t *shm_sem = sem_open(shm_dir, 0, 0600, 0);
-    if(shm_sem == SEM_FAILED){
-        printf("Couldn't open semaphore '%s'\n", shm_dir);
-    }
+    int num_clients = atoi(argv[2]);
 
     /*
      * Shared memory
-     *   NOTE: Opened in readonly because ger_cl will only read the counters
+     *   NOTE: Opened in readonly mode because ger_cl will only read the
+     * counters
      *         table from the shared memory and not modify anything
      */
-    int shm_fd = shm_open(shm_dir, O_RDONLY, 0600);
+    sem_t *shm_sem = sem_open(SHM_DIR, 0, 0600, 0);
+    if (shm_sem == SEM_FAILED) {
+        printf("Couldn't open semaphore '%s'\n", SHM_DIR);
+    }
+
+    int shm_fd = shm_open(SHM_DIR, O_RDONLY, 0600);
     if (shm_fd < 0) {
         printf("#ERROR# Couldn't open shared memory\n");
         exit(2);
@@ -61,7 +59,7 @@ int main(int argc, char *argv[])
     /* ------end shared memory-------- */
 
     // Early out if there are no counters
-    if(shm->numCounters < 1) {
+    if (shm->numCounters < 1 || shm->activeCounters < 1) {
     NO_COUNTERS:
         printf("#ERROR# No counters available\n");
         goto EXIT;
@@ -71,43 +69,52 @@ int main(int argc, char *argv[])
 
     int clientsCreated = 0;
 
-    for(; num_clients>0; num_clients--, ++clientsCreated)
-    {
+    for (; num_clients > 0; num_clients--, ++clientsCreated) {
+        if (shm->activeCounters < 1)
+            goto NO_COUNTERS;
+
         int i, min, index;
         min = 9999999;
         index = -1;
-        for(i=0; i < shm->numCounters; i++) {
-            if(shm->counters[i].currClients < min &&
-               shm->counters[i].duration == -1 &&
-               strcmp(shm->counters[i].fifo_name, "-")) {
+        for (i = 0; i < shm->numCounters; i++) {
+            if (shm->counters[i].currClients < min &&
+                shm->counters[i].duration == -1 &&
+                strcmp(shm->counters[i].fifo_name, "-")) {
                 index = i;
                 min = shm->counters[i].currClients;
             }
         }
 
-        if(index < 0){
+        if (index < 0) {
             goto NO_COUNTERS;
         }
 
-        char counter_fifo[80];
-        strcpy(counter_fifo, shm->counters[index].fifo_name);
+        char COUNTER_FIFO_NAME[80];
+        strcpy(COUNTER_FIFO_NAME, shm->counters[index].fifo_name);
 
-        if(fork() == 0) {
+        char SEM_NAME[80] = "/";
+        int helper = strcspn(COUNTER_FIFO_NAME, "_");
+        strncat(SEM_NAME, COUNTER_FIFO_NAME + helper + 1,
+                strlen(COUNTER_FIFO_NAME));
+
+        sem_t *temp_sem = sem_open(SEM_NAME, 0, 0600, 0);
+        if (temp_sem == SEM_FAILED) {
+            printf("Couldn't open semaphore '%s'\n", SEM_NAME);
+        }
+
+        if (fork() == 0) {
             char counterNumber[5];
-            sprintf(counterNumber, "%d", index+1);
-            execlp(client_path,
-                   client_path,
-                   counter_fifo,
-                   counterNumber,
-                   SHM_NAME,
-                   NULL);
-            printf("#ERROR# Couldn't exec '%s %s %s %s\n'",
-                   client_path,
-                   counter_fifo,
-                   counterNumber,
-                   SHM_NAME);
+            sprintf(counterNumber, "%d", index + 1);
+
+            execlp(CLIENT_PATH, CLIENT_PATH, COUNTER_FIFO_NAME, counterNumber,
+                   SHM_NAME, NULL);
+            printf("#ERROR# Couldn't exec '%s %s %s %s\n'", CLIENT_PATH,
+                   COUNTER_FIFO_NAME, counterNumber, SHM_NAME);
             exit(1);
         }
+
+        sem_wait(temp_sem);
+        sem_post(temp_sem);
 
         printf("Clients left: %d\n", num_clients);
         printf("Clients created: %d\n", clientsCreated);

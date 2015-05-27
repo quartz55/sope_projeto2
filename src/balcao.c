@@ -31,7 +31,7 @@ typedef struct thread
         sem_t *sem;
         char fifo[80];
         counter_t *counter;
-    }args;
+    } args;
 
 } thread;
 
@@ -54,9 +54,9 @@ int main(int argc, char *argv[])
 
     TEMPO_ABERTURA = atoi(argv[2]);
 
-    char SEM_NAME[80] = "/";
-    strcat(SEM_NAME, pid_s);
-    sem_t *sem = sem_open(SEM_NAME, O_CREAT, 0600, 0);
+    char COUNTER_SEM_NAME[80] = "/";
+    strcat(COUNTER_SEM_NAME, pid_s);
+    sem_t *counter_sem = sem_open(COUNTER_SEM_NAME, O_CREAT, 0600, 0);
 
     /*
      * Shared memory
@@ -68,11 +68,11 @@ int main(int argc, char *argv[])
 
     // SHM semaphore
     sem_t *shm_sem = sem_open(SHM_DIR, 0, 0600, 0);
-    if(shm_sem == SEM_FAILED){
+    if (shm_sem == SEM_FAILED) {
         printf("Creating semaphore\n");
         shm_sem = sem_open(SHM_DIR, O_CREAT, 0600, 0);
-    }
-    else sem_wait(shm_sem);
+    } else
+        sem_wait(shm_sem);
 
     int firstStart = 0;
     int shm_fd = shm_open(SHM_DIR, O_RDWR, 0600);
@@ -92,7 +92,8 @@ int main(int argc, char *argv[])
     }
 
     memstruct_t *shm;
-    shm = (memstruct_t *)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    shm = (memstruct_t *)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              shm_fd, 0);
     if (shm == MAP_FAILED) {
         printf("#ERROR# Couldn't map shared memory\n");
         shm_unlink(SHM_DIR);
@@ -100,7 +101,6 @@ int main(int argc, char *argv[])
     }
 
     if (firstStart) {
-
         printf("\n!!!!!!CREATING STORE!!!!!!!!\n");
         printf("!!!!!!CREATING STORE!!!!!!!!\n");
         printf("!!!!!!CREATING STORE!!!!!!!!\n\n");
@@ -121,12 +121,14 @@ int main(int argc, char *argv[])
 
     // Create counter FIFO
     if (mkfifo(COUNTER_FIFO_NAME, 0660) < 0) {
-            printf("\t#ERROR# Can't create counter FIFO\n");
+        printf("\t#ERROR# Can't create counter FIFO\n");
     } else {
-        printf("+ Created counter: %s  -  %ds\n", COUNTER_FIFO_NAME, TEMPO_ABERTURA);
+        printf("+ Created counter: %s  -  %ds\n", COUNTER_FIFO_NAME,
+               TEMPO_ABERTURA);
     }
 
-    // Non busy waiting (opens FIFO in write mode for the specified counter time)
+    // Non busy waiting (opens FIFO in write mode for the specified counter
+    // time)
     int stopCounter = 0;
     pthread_t fifo_thread;
     pthread_create(&fifo_thread, NULL, fifo_thread_function, &stopCounter);
@@ -134,7 +136,8 @@ int main(int argc, char *argv[])
     // Open counter FIFO to read
     int counterFifo_fd = open(COUNTER_FIFO_NAME, O_RDONLY);
     if (counterFifo_fd < 0) {
-        printf("\t#ERROR# Couldn't open counter FIFO '%s'\n", COUNTER_FIFO_NAME);
+        printf("\t#ERROR# Couldn't open counter FIFO '%s'\n",
+               COUNTER_FIFO_NAME);
         destroyFIFO(COUNTER_FIFO_NAME);
         exit(1);
     }
@@ -158,18 +161,20 @@ int main(int argc, char *argv[])
     ++shm->numCounters;
     ++shm->activeCounters;
 
-    logLine(SHM_NAME, 0, counter_data->i + 1, "cria_linh_mempart", COUNTER_FIFO_NAME);
+    logLine(SHM_NAME, 0, counter_data->i + 1, "cria_linh_mempart",
+            COUNTER_FIFO_NAME);
 
     memstruct_print(shm);
 
     // Counter is ready to start reading client requests
     sem_post(shm_sem);
-    sem_post(sem);
+    sem_post(counter_sem);
 
     while (1) {
         // Read FIFO until client arrives (data is written to FIFO)
         char cli_fifo_buffer[256];
-        while ((read(counterFifo_fd, &cli_fifo_buffer, 256 * sizeof(char))) == 0) {
+        while ((read(counterFifo_fd, &cli_fifo_buffer, 256 * sizeof(char))) ==
+               0) {
             if (stopCounter) {
                 goto CLOSE;
             }
@@ -178,8 +183,7 @@ int main(int argc, char *argv[])
         sem_wait(shm_sem);
 
         printf("----- %s ------\n", cli_fifo_buffer);
-        printf("-- Serving: %d | Served: %d --\n",
-               counter_data->currClients,
+        printf("-- Serving: %d | Served: %d --\n", counter_data->currClients,
                counter_data->servedClients);
 
         // Create thread to serve arriving client
@@ -189,8 +193,7 @@ int main(int argc, char *argv[])
         strcpy(t->args.fifo, cli_fifo_buffer);
         Vector_push(threads, t);
 
-        pthread_create(&t->tid, NULL, atendimento,
-                       (void *)&t->args);
+        pthread_create(&t->tid, NULL, atendimento, (void *)&t->args);
 
         sem_post(shm_sem);
 
@@ -228,8 +231,9 @@ int main(int argc, char *argv[])
     sem_wait(shm_sem);
 
     counter_data->duration = time(NULL) - counter_data->startTime;
-    counter_data->medTime = counter_data->medTime / (counter_data->servedClients ?
-                                                     counter_data->servedClients : 1);
+    counter_data->medTime =
+        counter_data->medTime /
+        (counter_data->servedClients ? counter_data->servedClients : 1);
 
     --shm->activeCounters;
 
@@ -240,21 +244,20 @@ int main(int argc, char *argv[])
     close(counterFifo_fd);
     destroyFIFO(COUNTER_FIFO_NAME);
 
-    sem_close(sem);
-    sem_unlink(SEM_NAME);
+    sem_close(counter_sem);
+    sem_unlink(COUNTER_SEM_NAME);
 
-    logLine(SHM_NAME, 0, counter_data->i + 1, "fecha_balcao", COUNTER_FIFO_NAME);
+    logLine(SHM_NAME, 0, counter_data->i + 1, "fecha_balcao",
+            COUNTER_FIFO_NAME);
 
     Vector_destroy(threads);
 
     /*
      * --- If last counter ---
      */
-    if (shm->activeCounters <= 0)
-    {
-        printf("Last counter\n");
-
-        logLine(SHM_NAME, 0, counter_data->i + 1, "fecha_loja", COUNTER_FIFO_NAME);
+    if (shm->activeCounters <= 0) {
+        logLine(SHM_NAME, 0, counter_data->i + 1, "fecha_loja",
+                COUNTER_FIFO_NAME);
 
         printf("\n!!!!!!CLOSING STORE!!!!!!\n");
         printf("!!!!!!CLOSING STORE!!!!!!\n");
@@ -307,24 +310,26 @@ void *atendimento(void *thread_arg)
     ++args->counter->currClients;
 
     int sleepTime = args->counter->currClients;
-    if (sleepTime > 10) sleepTime = 10;
-
-    sem_post(args->sem);
+    if (sleepTime > 10)
+        sleepTime = 10;
 
     logLine(SHM_NAME, 0, 1, "inicia_atend_cli", cli_fifo);
 
-    printf("[%d] + Client '%s' will be served in %d seconds\n", pid, cli_fifo, sleepTime);
+    printf("[%d] + Client '%s' will be served in %d seconds\n", pid, cli_fifo,
+           sleepTime);
+
+    sem_post(args->sem);
 
     sleep(sleepTime);
+
+    sem_wait(args->sem);
 
     logLine(SHM_NAME, 0, 1, "fim_atend_cli", cli_fifo);
     printf("[%d] - Client '%s' has been served\n", pid, cli_fifo);
 
-    while(write(cli_fd, "fim_atendimento", 15) == 0);
+    while (write(cli_fd, "fim_atendimento", 15) == 0);
 
     close(cli_fd);
-
-    sem_wait(args->sem);
 
     ++args->counter->servedClients;
     --args->counter->currClients;
@@ -340,7 +345,8 @@ void *fifo_thread_function(void *args)
     int *ret = (int *)args;
     int counterFifoWrite_fd = open(COUNTER_FIFO_NAME, O_WRONLY);
     if (counterFifoWrite_fd < 0) {
-        printf("\t#ERROR# Couldn't open counter FIFO '%s'\n", COUNTER_FIFO_NAME);
+        printf("\t#ERROR# Couldn't open counter FIFO '%s'\n",
+               COUNTER_FIFO_NAME);
         destroyFIFO(COUNTER_FIFO_NAME);
         *ret = -1;
         return NULL;
