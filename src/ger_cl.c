@@ -69,6 +69,8 @@ int main(int argc, char *argv[])
 
     int clientsCreated = 0;
 
+    printf("* Creating %d clients\n", num_clients);
+
     for (; num_clients > 0; num_clients--, ++clientsCreated) {
         if (shm->activeCounters < 1)
             goto NO_COUNTERS;
@@ -115,12 +117,10 @@ int main(int argc, char *argv[])
 
         sem_wait(temp_sem);
         sem_post(temp_sem);
-
-        printf("Clients left: %d\n", num_clients);
-        printf("Clients created: %d\n", clientsCreated);
     }
-
     wait(NULL);
+
+    printf("Clients created: %d\n", clientsCreated);
 
 EXIT:
     if (munmap(shm, SHM_SIZE) < 0) {

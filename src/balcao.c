@@ -69,15 +69,15 @@ int main(int argc, char *argv[])
     // SHM semaphore
     sem_t *shm_sem = sem_open(SHM_DIR, 0, 0600, 0);
     if (shm_sem == SEM_FAILED) {
-        printf("Creating semaphore\n");
         shm_sem = sem_open(SHM_DIR, O_CREAT, 0600, 0);
-    } else
+        printf("Creating SHM semaphore: %s\n", SHM_DIR);
+    } else {
         sem_wait(shm_sem);
+    }
 
     int firstStart = 0;
     int shm_fd = shm_open(SHM_DIR, O_RDWR, 0600);
-    if (shm_fd < 0) // If shared memory doesn't exist, create it
-    {
+    if (shm_fd < 0) { // If shared memory doesn't exist, create it
         firstStart = 1;
         shm_fd = shm_open(SHM_DIR, O_CREAT | O_RDWR, 0600);
         if (shm_fd < 0) {
@@ -181,10 +181,6 @@ int main(int argc, char *argv[])
         }
 
         sem_wait(shm_sem);
-
-        printf("----- %s ------\n", cli_fifo_buffer);
-        printf("-- Serving: %d | Served: %d --\n", counter_data->currClients,
-               counter_data->servedClients);
 
         // Create thread to serve arriving client
         thread *t = (thread *)malloc(sizeof(thread));
