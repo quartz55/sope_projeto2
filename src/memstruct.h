@@ -21,7 +21,6 @@ typedef struct counter_t
 typedef struct memstruct_t
 {
     int startTime;
-    pthread_mutex_t mutx;
     int activeCounters;
     int numCounters;
     counter_t counters[200];

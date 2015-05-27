@@ -28,7 +28,7 @@ typedef struct thread
     pthread_t tid;
     struct th_args
     {
-        pthread_mutex_t *mutx;
+        sem_t *sem;
         char fifo[80];
         counter_t *counter;
     }args;
@@ -100,10 +100,6 @@ int main(int argc, char *argv[])
     }
 
     if (firstStart) {
-        if (pthread_mutex_init(&shm->mutx, NULL) != 0)
-            printf("\t#ERROR# Couldn't initialize mutex\n");
-
-        pthread_mutex_lock(&shm->mutx);
 
         printf("\n!!!!!!CREATING STORE!!!!!!!!\n");
         printf("!!!!!!CREATING STORE!!!!!!!!\n");
@@ -116,8 +112,6 @@ int main(int argc, char *argv[])
         shm->startTime = time(NULL);
         shm->numCounters = 0;
         shm->activeCounters = 0;
-
-        pthread_mutex_unlock(&shm->mutx);
     }
     /* ------end shared memory-------- */
 
@@ -151,8 +145,6 @@ int main(int argc, char *argv[])
     // Check for clients until time's up
     int startTime = time(NULL);
 
-    pthread_mutex_lock(&shm->mutx);
-
     // Initialize counter data
     counter_t *counter_data = &shm->counters[shm->numCounters];
     counter_data->i = shm->numCounters;
@@ -170,8 +162,6 @@ int main(int argc, char *argv[])
 
     memstruct_print(shm);
 
-    pthread_mutex_unlock(&shm->mutx);
-
     // Counter is ready to start reading client requests
     sem_post(shm_sem);
     sem_post(sem);
@@ -185,7 +175,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        pthread_mutex_lock(&shm->mutx);
+        sem_wait(shm_sem);
 
         printf("----- %s ------\n", cli_fifo_buffer);
         printf("-- Serving: %d | Served: %d --\n",
@@ -194,7 +184,7 @@ int main(int argc, char *argv[])
 
         // Create thread to serve arriving client
         thread *t = (thread *)malloc(sizeof(thread));
-        t->args.mutx = &shm->mutx;
+        t->args.sem = shm_sem;
         t->args.counter = counter_data;
         strcpy(t->args.fifo, cli_fifo_buffer);
         Vector_push(threads, t);
@@ -202,7 +192,7 @@ int main(int argc, char *argv[])
         pthread_create(&t->tid, NULL, atendimento,
                        (void *)&t->args);
 
-        pthread_mutex_unlock(&shm->mutx);
+        sem_post(shm_sem);
 
         continue;
 
@@ -210,12 +200,12 @@ int main(int argc, char *argv[])
         break;
     }
 
-    pthread_mutex_lock(&shm->mutx);
+    sem_wait(shm_sem);
 
     // Don't accept more clients
     strcpy(counter_data->fifo_name, "-");
 
-    pthread_mutex_unlock(&shm->mutx);
+    sem_post(shm_sem);
 
     // Finish any pending clients before exiting
     int i;
@@ -236,8 +226,6 @@ int main(int argc, char *argv[])
      *   - Close shared memory
      */
     sem_wait(shm_sem);
-
-    /* pthread_mutex_lock(&shm->mutx); */
 
     counter_data->duration = time(NULL) - counter_data->startTime;
     counter_data->medTime = counter_data->medTime / (counter_data->servedClients ?
@@ -274,9 +262,6 @@ int main(int argc, char *argv[])
 
         sem_unlink(SHM_NAME);
 
-        pthread_mutex_destroy(&shm->mutx);
-        printf("Mutex destroyed\n");
-
         if (munmap(shm, SHM_SIZE) < 0) {
             printf("#ERROR# Couldn't unmap shared memory\n");
         }
@@ -293,7 +278,6 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    /* pthread_mutex_unlock(&shm->mutx); */
     sem_post(shm_sem);
 
     if (munmap(shm, SHM_SIZE) < 0) {
@@ -318,14 +302,14 @@ void *atendimento(void *thread_arg)
         return 0;
     }
 
-    pthread_mutex_lock(args->mutx);
+    sem_wait(args->sem);
 
     ++args->counter->currClients;
 
     int sleepTime = args->counter->currClients;
     if (sleepTime > 10) sleepTime = 10;
 
-    pthread_mutex_unlock(args->mutx);
+    sem_post(args->sem);
 
     logLine(SHM_NAME, 0, 1, "inicia_atend_cli", cli_fifo);
 
@@ -340,13 +324,13 @@ void *atendimento(void *thread_arg)
 
     close(cli_fd);
 
-    pthread_mutex_lock(args->mutx);
+    sem_wait(args->sem);
 
     ++args->counter->servedClients;
     --args->counter->currClients;
     args->counter->medTime += sleepTime;
 
-    pthread_mutex_unlock(args->mutx);
+    sem_post(args->sem);
 
     return (void *)1;
 }

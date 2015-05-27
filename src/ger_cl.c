@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <dirent.h>
 #include <libgen.h>
+#include <semaphore.h>
 
 #include "memstruct.h"
 #include "vector.h"
@@ -34,6 +35,11 @@ int main(int argc, char *argv[])
     strcpy(SHM_NAME, argv[1]);
     char shm_dir[80] = "/";
     strcat(shm_dir, SHM_NAME);
+
+    sem_t *shm_sem = sem_open(shm_dir, 0, 0600, 0);
+    if(shm_sem == SEM_FAILED){
+        printf("Couldn't open semaphore '%s'\n", shm_dir);
+    }
 
     /*
      * Shared memory
