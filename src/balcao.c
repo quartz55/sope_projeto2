@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
                counter_data->currClients,
                counter_data->servedClients);
 
-        //   Create thread to serve arriving client
+        // Create thread to serve arriving client
         thread *t = (thread *)malloc(sizeof(thread));
         t->args.mutx = &shm->mutx;
         t->args.counter = counter_data;
@@ -237,7 +237,7 @@ int main(int argc, char *argv[])
      */
     sem_wait(shm_sem);
 
-    pthread_mutex_lock(&shm->mutx);
+    /* pthread_mutex_lock(&shm->mutx); */
 
     counter_data->duration = time(NULL) - counter_data->startTime;
     counter_data->medTime = counter_data->medTime / (counter_data->servedClients ?
@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    pthread_mutex_unlock(&shm->mutx);
+    /* pthread_mutex_unlock(&shm->mutx); */
     sem_post(shm_sem);
 
     if (munmap(shm, SHM_SIZE) < 0) {
