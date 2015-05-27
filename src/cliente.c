@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
+#include <semaphore.h>
 
 #include "log.h"
 
@@ -17,13 +18,17 @@ void destroyFIFO(char *name);
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
-        printf("Usage: %s <counter_fifo> <shm>\n", argv[0]);
+    if (argc != 4) {
+        printf("Usage: %s <counter_fifo> <counter_number> <shm>\n", argv[0]);
         exit(1);
     }
 
+    char *B_FIFO = argv[1];
+
+    int counterNumber = atoi(argv[2]);
+
     char SHM_NAME[80];
-    strcpy(SHM_NAME, argv[2]);
+    strcpy(SHM_NAME, argv[3]);
 
     /* Generate FIFO name for client */
     pid_t pid;
@@ -42,15 +47,17 @@ int main(int argc, char *argv[])
             printf("\t#ERROR# Can't create client FIFO\n");
     else
     {
-        printf("+----------------------------------\n");
-        printf("| Created cliente: %s\n", FIFO_name);
-        printf("+----------------------------------\n");
+        printf("+ Created cliente: %s\n", FIFO_name);
     }
     /* ---------------------------- */
 
 
-    char *B_FIFO = argv[1];
 
+    char SEM_NAME[80];
+    int index = strcspn(B_FIFO, "_");
+    strncpy(SEM_NAME, B_FIFO+index+1, strlen(B_FIFO));
+
+    sem_t *sem = sem_open(SEM_NAME, 0, 0600, 0);
 
     /* Write to counter FIFO the client's private FIFO */
     int fd;
@@ -61,14 +68,13 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    printf("Client '%s' is contacting '%s' counter\n", FIFO_name, B_FIFO);
-    logLine(SHM_NAME, 1, 1, "pede_atendimento", FIFO_name);
+    sem_wait(sem);
+
+    logLine(SHM_NAME, 1, counterNumber, "pede_atendimento", FIFO_name);
     /* Write to counter FIFO the client fifo name */
     write(fd, FIFO_name, strlen(FIFO_name) + 1);
-
     close(fd);
 
-    printf("Client '%s' is waiting for '%s' counter to begin serving\n", FIFO_name, B_FIFO);
     int cli_fd;
     cli_fd = open(FIFO_name, O_RDONLY);
     if (cli_fd < 0) {
@@ -77,12 +83,17 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    // Only post after we are sure the client is being served
+    sem_post(sem);
+
     /* Wait for counter to finish */
     char fim_atendimento[256];
-    while ((read(cli_fd, &fim_atendimento, 256*sizeof(char))) == 0);
+    while ((read(cli_fd, &fim_atendimento, 256*sizeof(char))) == 0) {
+        printf("%s\n", FIFO_name);
+    }
     if(strcmp("fim_atendimento", fim_atendimento) == 0){
-        printf("%s is finished (%s)\n", FIFO_name, fim_atendimento);
-        logLine(SHM_NAME, 1, 1, "fim_atendimento", FIFO_name);
+        printf("- %s is finished (%s)\n", FIFO_name, fim_atendimento);
+        logLine(SHM_NAME, 1, counterNumber, "fim_atendimento", FIFO_name);
     }
     else {
         printf("#ERROR# Client '%s' didn't finish being served\n", FIFO_name);

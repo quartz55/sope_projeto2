@@ -53,8 +53,12 @@ int main(int argc, char *argv[])
 
     pthread_mutex_unlock(&shm->mutx);
 
+    int clientsCreated = 0;
 
-    for(; num_clients>0; num_clients--) {
+    for(; num_clients>0; num_clients--, ++clientsCreated) {
+
+        printf("Clients left: %d\n", num_clients);
+        printf("Clients created: %d\n", clientsCreated);
 
         pthread_mutex_lock(&shm->mutx);
 
@@ -70,8 +74,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        printf("%d\n", min);
-
         if(index < 0){
             goto NO_COUNTERS;
         }
@@ -79,18 +81,26 @@ int main(int argc, char *argv[])
         char counter_fifo[80];
         strcpy(counter_fifo, shm->counters[index].fifo_name);
 
-        ++shm->counters[index].currClients;
-
         pthread_mutex_unlock(&shm->mutx);
 
         if(fork() == 0) {
-            execlp("./cliente", "./cliente", counter_fifo, SHM_NAME, NULL);
-            printf("#ERROR# Couldn't exec './cliente %s %s\n'", counter_fifo, SHM_NAME);
+            char counterNumber[5];
+            sprintf(counterNumber, "%d", index+1);
+            execlp("./cliente",
+                   "./cliente",
+                   counter_fifo,
+                   counterNumber,
+                   SHM_NAME,
+                   NULL);
+            printf("#ERROR# Couldn't exec './cliente %s %s %s\n'",
+                   counter_fifo,
+                   counterNumber,
+                   SHM_NAME);
             exit(1);
         }
     }
 
-    /* wait(NULL); */
+    wait(NULL);
 
 EXIT:
     if (munmap(shm, SHM_SIZE) < 0) {
