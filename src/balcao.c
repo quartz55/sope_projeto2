@@ -19,6 +19,7 @@
 #define DEBUG 0
 
 char SHM_NAME[80];
+char SHM_DIR[80] = "/";
 char COUNTER_FIFO_NAME[80];
 int TEMPO_ABERTURA;
 
@@ -47,30 +48,38 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    /* Get process pid */
-    pid_t pid = getpid();
+    // Get process pid
     char pid_s[80];
-    sprintf(pid_s, "%d", pid); // Convert int to string
-
-    strcpy(SHM_NAME, argv[1]);
-    char shm_dir[80] = "/";
-    strcat(shm_dir, SHM_NAME);
-
-    char SEM_NAME[80];
-    strcpy(SEM_NAME, pid_s);
-    sem_t *sem = sem_open(SEM_NAME, O_CREAT, 0600, 0);
+    sprintf(pid_s, "%d", getpid()); // Convert int to string
 
     TEMPO_ABERTURA = atoi(argv[2]);
+
+    char SEM_NAME[80] = "/";
+    strcat(SEM_NAME, pid_s);
+    sem_t *sem = sem_open(SEM_NAME, O_CREAT, 0600, 0);
 
     /*
      * Shared memory
      */
+
+    // SHM strings
+    strcpy(SHM_NAME, argv[1]);
+    strcat(SHM_DIR, SHM_NAME);
+
+    // SHM semaphore
+    sem_t *shm_sem = sem_open(SHM_DIR, 0, 0600, 0);
+    if(shm_sem == SEM_FAILED){
+        printf("Creating semaphore\n");
+        shm_sem = sem_open(SHM_DIR, O_CREAT, 0600, 0);
+    }
+    else sem_wait(shm_sem);
+
     int firstStart = 0;
-    int shm_fd = shm_open(shm_dir, O_RDWR, 0600);
+    int shm_fd = shm_open(SHM_DIR, O_RDWR, 0600);
     if (shm_fd < 0) // If shared memory doesn't exist, create it
     {
         firstStart = 1;
-        shm_fd = shm_open(shm_dir, O_CREAT | O_RDWR, 0600);
+        shm_fd = shm_open(SHM_DIR, O_CREAT | O_RDWR, 0600);
         if (shm_fd < 0) {
             printf("#ERROR# Couldn't open shared memory\n");
             exit(2);
@@ -86,7 +95,7 @@ int main(int argc, char *argv[])
     shm = (memstruct_t *)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shm == MAP_FAILED) {
         printf("#ERROR# Couldn't map shared memory\n");
-        shm_unlink(shm_dir);
+        shm_unlink(SHM_DIR);
         exit(2);
     }
 
@@ -95,7 +104,7 @@ int main(int argc, char *argv[])
             printf("\t#ERROR# Couldn't initialize mutex\n");
 
         pthread_mutex_lock(&shm->mutx);
-        if(DEBUG) printf("'%s' locked\n", pid_s);
+
         printf("\n!!!!!!CREATING STORE!!!!!!!!\n");
         printf("!!!!!!CREATING STORE!!!!!!!!\n");
         printf("!!!!!!CREATING STORE!!!!!!!!\n\n");
@@ -106,36 +115,29 @@ int main(int argc, char *argv[])
         /* Initialize shared mem data */
         shm->startTime = time(NULL);
         shm->numCounters = 0;
+        shm->activeCounters = 0;
 
         pthread_mutex_unlock(&shm->mutx);
-        if(DEBUG) printf("'%s' unlocked\n", pid_s);
     }
     /* ------end shared memory-------- */
 
-    /* Generate FIFO name for counter */
+    // Generate FIFO name for counter
     strcpy(COUNTER_FIFO_NAME, "/tmp/fb_");
     strcat(COUNTER_FIFO_NAME, pid_s);
 
-
-    /* Create counter FIFO */
+    // Create counter FIFO
     if (mkfifo(COUNTER_FIFO_NAME, 0660) < 0) {
-        if (errno == EEXIST)
-            printf("\t#ERROR# Counter FIFO '%s' already exists\n", COUNTER_FIFO_NAME);
-        else
             printf("\t#ERROR# Can't create counter FIFO\n");
     } else {
-        printf("+----------------------------------\n");
-        printf("| Created counter: %s  -  %ds\n", COUNTER_FIFO_NAME, TEMPO_ABERTURA);
-        printf("+----------------------------------\n");
+        printf("+ Created counter: %s  -  %ds\n", COUNTER_FIFO_NAME, TEMPO_ABERTURA);
     }
 
-
-    /* Non busy waiting (opens FIFO in write mode for the specified counter time) */
+    // Non busy waiting (opens FIFO in write mode for the specified counter time)
     int stopCounter = 0;
     pthread_t fifo_thread;
     pthread_create(&fifo_thread, NULL, fifo_thread_function, &stopCounter);
 
-    /* Open counter FIFO to read */
+    // Open counter FIFO to read
     int counterFifo_fd = open(COUNTER_FIFO_NAME, O_RDONLY);
     if (counterFifo_fd < 0) {
         printf("\t#ERROR# Couldn't open counter FIFO '%s'\n", COUNTER_FIFO_NAME);
@@ -143,16 +145,15 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    /* Allocate space for threads */
+    // Allocate space for threads
     Vector_t *threads = Vector_new();
 
-    /* Check for clients until time's up */
+    // Check for clients until time's up
     int startTime = time(NULL);
 
     pthread_mutex_lock(&shm->mutx);
-    if(DEBUG) printf("'%s' locked\n", pid_s);
 
-    /* Initialize counter data */
+    // Initialize counter data
     counter_t *counter_data = &shm->counters[shm->numCounters];
     counter_data->i = shm->numCounters;
     counter_data->startTime = startTime;
@@ -163,19 +164,20 @@ int main(int argc, char *argv[])
     counter_data->medTime = 0;
 
     ++shm->numCounters;
+    ++shm->activeCounters;
 
     logLine(SHM_NAME, 0, counter_data->i + 1, "cria_linh_mempart", COUNTER_FIFO_NAME);
 
     memstruct_print(shm);
 
     pthread_mutex_unlock(&shm->mutx);
-    if(DEBUG) printf("'%s' unlocked\n", pid_s);
 
-    /* Counter is ready to start reading client requests */
+    // Counter is ready to start reading client requests
+    sem_post(shm_sem);
     sem_post(sem);
 
     while (1) {
-        /* Read FIFO until client arrives (data is written to FIFO) */
+        // Read FIFO until client arrives (data is written to FIFO)
         char cli_fifo_buffer[256];
         while ((read(counterFifo_fd, &cli_fifo_buffer, 256 * sizeof(char))) == 0) {
             if (stopCounter) {
@@ -184,15 +186,13 @@ int main(int argc, char *argv[])
         }
 
         pthread_mutex_lock(&shm->mutx);
-        if(DEBUG) printf("'%s' locked\n", pid_s);
 
         printf("----- %s ------\n", cli_fifo_buffer);
-        printf("-- Serving: %d | Served: %d\n",
+        printf("-- Serving: %d | Served: %d --\n",
                counter_data->currClients,
                counter_data->servedClients);
 
-        /* Create thread to take care of arriving client */
-
+        //   Create thread to serve arriving client
         thread *t = (thread *)malloc(sizeof(thread));
         t->args.mutx = &shm->mutx;
         t->args.counter = counter_data;
@@ -203,7 +203,6 @@ int main(int argc, char *argv[])
                        (void *)&t->args);
 
         pthread_mutex_unlock(&shm->mutx);
-        if(DEBUG) printf("'%s' unlocked\n", pid_s);
 
         continue;
 
@@ -211,16 +210,14 @@ int main(int argc, char *argv[])
         break;
     }
 
-    /* Don't accept more clients */
     pthread_mutex_lock(&shm->mutx);
-    if(DEBUG) printf("'%s' locked\n", pid_s);
 
+    // Don't accept more clients
     strcpy(counter_data->fifo_name, "-");
 
     pthread_mutex_unlock(&shm->mutx);
-    if(DEBUG) printf("'%s' unlocked\n", pid_s);
 
-    /* Finish any pending clients before exiting */
+    // Finish any pending clients before exiting
     int i;
     for (i = 0; i < Vector_size(threads); i++)
         pthread_join(((thread *)Vector_get(threads, i))->tid, NULL);
@@ -232,25 +229,25 @@ int main(int argc, char *argv[])
      *   - Destroy counter FIFO
      *   - Close and unlink semaphore
      *   - Free memory used by threads
-     *  IF LAST COUNTER
+     * -- IF LAST COUNTER --
      *   - Destroy mutex
      *   - Clean shared memory
      *   - Unmap shared memory
      *   - Close shared memory
      */
+    sem_wait(shm_sem);
 
     pthread_mutex_lock(&shm->mutx);
-    if(DEBUG) printf("'%s' locked\n", pid_s);
 
     counter_data->duration = time(NULL) - counter_data->startTime;
-    counter_data->medTime /= counter_data->servedClients;
+    counter_data->medTime = counter_data->medTime / (counter_data->servedClients ?
+                                                     counter_data->servedClients : 1);
+
+    --shm->activeCounters;
 
     memstruct_print(shm);
 
-    printf("+----------------------------------\n");
-    printf("| Closing counter: %s\n", COUNTER_FIFO_NAME);
-    printf("| Clients served: %d\n", counter_data->servedClients);
-    printf("+----------------------------------\n");
+    printf("- Closing counter: %s\n", COUNTER_FIFO_NAME);
 
     close(counterFifo_fd);
     destroyFIFO(COUNTER_FIFO_NAME);
@@ -262,36 +259,20 @@ int main(int argc, char *argv[])
 
     Vector_destroy(threads);
 
-    pthread_mutex_unlock(&shm->mutx);
-    if(DEBUG) printf("'%s' unlocked\n", pid_s);
-
     /*
      * --- If last counter ---
      */
-
-    pthread_mutex_lock(&shm->mutx);
-    if(DEBUG) printf("'%s' locked\n", pid_s);
-
-    int lastCounter = 1;
-    for (i = 0; i < shm->numCounters; i++) {
-        if (shm->counters[i].duration == -1) {
-            lastCounter = 0;
-            break;
-        }
-    }
-
-    if(DEBUG) printf("'%s' unlocked\n", pid_s);
-    pthread_mutex_unlock(&shm->mutx);
-
-    if (lastCounter) {
-        pthread_mutex_lock(&shm->mutx);
-        if(DEBUG) printf("'%s' locked\n", pid_s);
+    if (shm->activeCounters <= 0)
+    {
+        printf("Last counter\n");
 
         logLine(SHM_NAME, 0, counter_data->i + 1, "fecha_loja", COUNTER_FIFO_NAME);
 
+        printf("\n!!!!!!CLOSING STORE!!!!!!\n");
         printf("!!!!!!CLOSING STORE!!!!!!\n");
-        printf("!!!!!!CLOSING STORE!!!!!!\n");
-        printf("!!!!!!CLOSING STORE!!!!!!\n");
+        printf("!!!!!!CLOSING STORE!!!!!!\n\n");
+
+        sem_unlink(SHM_NAME);
 
         pthread_mutex_destroy(&shm->mutx);
         printf("Mutex destroyed\n");
@@ -302,7 +283,7 @@ int main(int argc, char *argv[])
 
         printf("Unmapped shm\n");
 
-        if (shm_unlink(shm_dir) < 0) {
+        if (shm_unlink(SHM_DIR) < 0) {
             printf("#ERROR# Couldn't close shared memory\n");
             exit(2);
         }
@@ -311,6 +292,9 @@ int main(int argc, char *argv[])
 
         exit(0);
     }
+
+    pthread_mutex_unlock(&shm->mutx);
+    sem_post(shm_sem);
 
     if (munmap(shm, SHM_SIZE) < 0) {
         printf("#ERROR# Couldn't unmap shared memory\n");
@@ -335,7 +319,6 @@ void *atendimento(void *thread_arg)
     }
 
     pthread_mutex_lock(args->mutx);
-    if(DEBUG) printf("'%d' locked\n", pid);
 
     ++args->counter->currClients;
 
@@ -343,32 +326,27 @@ void *atendimento(void *thread_arg)
     if (sleepTime > 10) sleepTime = 10;
 
     pthread_mutex_unlock(args->mutx);
-    if(DEBUG) printf("'%d' unlocked\n", pid);
 
     logLine(SHM_NAME, 0, 1, "inicia_atend_cli", cli_fifo);
 
-    printf("+ Client '%s' has arrived\n", cli_fifo);
-    printf("* Client '%s' will be served in %d seconds\n", cli_fifo, sleepTime);
+    printf("[%d] + Client '%s' will be served in %d seconds\n", pid, cli_fifo, sleepTime);
 
     sleep(sleepTime);
 
     logLine(SHM_NAME, 0, 1, "fim_atend_cli", cli_fifo);
-    printf("* Client '%s' has been served\n", cli_fifo);
+    printf("[%d] - Client '%s' has been served\n", pid, cli_fifo);
 
     while(write(cli_fd, "fim_atendimento", 15) == 0);
 
     close(cli_fd);
 
     pthread_mutex_lock(args->mutx);
-    if(DEBUG) printf("'%d' locked\n", pid);
 
     ++args->counter->servedClients;
     --args->counter->currClients;
-
     args->counter->medTime += sleepTime;
 
     pthread_mutex_unlock(args->mutx);
-    if(DEBUG) printf("'%d' unlocked\n", pid);
 
     return (void *)1;
 }

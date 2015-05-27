@@ -6,6 +6,8 @@
 #include <sys/mman.h>
 #include <pthread.h>
 #include <sys/wait.h>
+#include <dirent.h>
+#include <libgen.h>
 
 #include "memstruct.h"
 #include "vector.h"
@@ -20,6 +22,14 @@ int main(int argc, char *argv[])
     }
 
     int num_clients = atoi(argv[2]);
+
+    // Get path to 'client'
+    char client_path[256];
+    realpath(argv[0], client_path);
+    dirname(client_path);
+    strcat(client_path, "/cliente");
+    /* printf("%s\n", client_path); */
+    /* -- */
 
     strcpy(SHM_NAME, argv[1]);
     char shm_dir[80] = "/";
@@ -44,7 +54,7 @@ int main(int argc, char *argv[])
     }
     /* ------end shared memory-------- */
 
-    /* Early out if there are no counters */
+    // Early out if there are no counters
     if(shm->numCounters < 1) {
     NO_COUNTERS:
         printf("#ERROR# No counters available\n");
@@ -55,9 +65,8 @@ int main(int argc, char *argv[])
 
     int clientsCreated = 0;
 
-    for(; num_clients>0; num_clients--, ++clientsCreated) {
-
-
+    for(; num_clients>0; num_clients--, ++clientsCreated)
+    {
         int i, min, index;
         min = 9999999;
         index = -1;
@@ -80,13 +89,14 @@ int main(int argc, char *argv[])
         if(fork() == 0) {
             char counterNumber[5];
             sprintf(counterNumber, "%d", index+1);
-            execlp("./cliente",
-                   "./cliente",
+            execlp(client_path,
+                   client_path,
                    counter_fifo,
                    counterNumber,
                    SHM_NAME,
                    NULL);
-            printf("#ERROR# Couldn't exec './cliente %s %s %s\n'",
+            printf("#ERROR# Couldn't exec '%s %s %s %s\n'",
+                   client_path,
                    counter_fifo,
                    counterNumber,
                    SHM_NAME);

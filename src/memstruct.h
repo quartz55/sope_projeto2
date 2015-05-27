@@ -22,6 +22,7 @@ typedef struct memstruct_t
 {
     int startTime;
     pthread_mutex_t mutx;
+    int activeCounters;
     int numCounters;
     counter_t counters[200];
 }memstruct_t;
@@ -29,7 +30,7 @@ typedef struct memstruct_t
 inline void counter_print(counter_t *c)
 {
     printf(" %-5d | %-12d | %-7d | %-14s | %-15d | %-15d | %-12d\n",
-           c->i,
+           c->i+1,
            c->startTime,
            c->duration,
            c->fifo_name,
@@ -46,7 +47,7 @@ inline void memstruct_print(memstruct_t *m)
     printf("\n");
 
     printf("Start time: %d\n", m->startTime);
-    printf("Counters: %d\n\n", m->numCounters);
+    printf("Counters: %d (%d open)\n\n", m->numCounters, m->activeCounters);
 
     printf("%-6s | %-22s | %-14s | %-33s | %-12s\n",
            "Balcao",

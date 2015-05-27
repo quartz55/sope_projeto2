@@ -53,9 +53,9 @@ int main(int argc, char *argv[])
 
 
 
-    char SEM_NAME[80];
+    char SEM_NAME[80] = "/";
     int index = strcspn(B_FIFO, "_");
-    strncpy(SEM_NAME, B_FIFO+index+1, strlen(B_FIFO));
+    strncat(SEM_NAME, B_FIFO+index+1, strlen(B_FIFO));
 
     sem_t *sem = sem_open(SEM_NAME, 0, 0600, 0);
 
